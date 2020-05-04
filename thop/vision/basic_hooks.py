@@ -104,7 +104,8 @@ def count_avgpool(device):
 
 def count_adap_avgpool(device):
     def wrapper(m, x, y):
-        kernel = torch.DoubleTensor([*(x[0].shape[2:])]).to(device) // torch.DoubleTensor(list((m.output_size,))).to(device).squeeze()
+        kernel = torch.DoubleTensor([*(x[0].shape[2:])]).to(device) // torch.DoubleTensor(list((m.output_size,))).to(
+            device).squeeze()
         total_add = torch.prod(kernel)
         total_div = 1
         kernel_ops = total_add + total_div
@@ -117,32 +118,35 @@ def count_adap_avgpool(device):
 
 
 # TODO: verify the accuracy
-def count_upsample(m, x, y):
-    if m.mode not in ("nearest", "linear", "bilinear", "bicubic",):  # "trilinear"
-        logging.warning("mode %s is not implemented yet, take it a zero op" % m.mode)
-        return zero_ops(m, x, y)
+def count_upsample(device):
+    def wrapper(m, x, y):
+        if m.mode not in ("nearest", "linear", "bilinear", "bicubic",):  # "trilinear"
+            logging.warning("mode %s is not implemented yet, take it a zero op" % m.mode)
+            return zero_ops(m, x, y)
 
-    if m.mode == "nearest":
-        return zero_ops(m, x, y)
+        if m.mode == "nearest":
+            return zero_ops(m, x, y)
 
-    x = x[0]
-    if m.mode == "linear":
-        total_ops = y.nelement() * 5  # 2 muls + 3 add
-    elif m.mode == "bilinear":
-        # https://en.wikipedia.org/wiki/Bilinear_interpolation
-        total_ops = y.nelement() * 11  # 6 muls + 5 adds
-    elif m.mode == "bicubic":
-        # https://en.wikipedia.org/wiki/Bicubic_interpolation
-        # Product matrix [4x4] x [4x4] x [4x4]
-        ops_solve_A = 224  # 128 muls + 96 adds
-        ops_solve_p = 35  # 16 muls + 12 adds + 4 muls + 3 adds
-        total_ops = y.nelement() * (ops_solve_A + ops_solve_p)
-    elif m.mode == "trilinear":
-        # https://en.wikipedia.org/wiki/Trilinear_interpolation
-        # can viewed as 2 bilinear + 1 linear
-        total_ops = y.nelement() * (13 * 2 + 5)
+        x = x[0]
+        if m.mode == "linear":
+            total_ops = y.nelement() * 5  # 2 muls + 3 add
+        elif m.mode == "bilinear":
+            # https://en.wikipedia.org/wiki/Bilinear_interpolation
+            total_ops = y.nelement() * 11  # 6 muls + 5 adds
+        elif m.mode == "bicubic":
+            # https://en.wikipedia.org/wiki/Bicubic_interpolation
+            # Product matrix [4x4] x [4x4] x [4x4]
+            ops_solve_A = 224  # 128 muls + 96 adds
+            ops_solve_p = 35  # 16 muls + 12 adds + 4 muls + 3 adds
+            total_ops = y.nelement() * (ops_solve_A + ops_solve_p)
+        elif m.mode == "trilinear":
+            # https://en.wikipedia.org/wiki/Trilinear_interpolation
+            # can viewed as 2 bilinear + 1 linear
+            total_ops = y.nelement() * (13 * 2 + 5)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+        m.total_ops += torch.DoubleTensor([int(total_ops)])
+
+    return wrapper
 
 
 # nn.Linear
