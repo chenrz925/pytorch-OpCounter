@@ -132,28 +132,32 @@ def profile_origin(model, inputs, custom_ops=None, verbose=True):
     return total_ops, total_params
 
 
-def profile(model: nn.Module, inputs, custom_ops=None, verbose=True):
+def profile(model: nn.Module, inputs, custom_ops=None, verbose=True, device=torch.device('cpu')):
     handler_collection = {}
     types_collection = set()
     if custom_ops is None:
         custom_ops = {}
+    if isinstance(device, str):
+        device = torch.device(device)
+    if not isinstance(device, torch.device):
+        raise RuntimeError("Device must be torch.device or str, not %s." % type(device))
 
     def add_hooks(m: nn.Module):
-        m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64))
-        m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64))
+        m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64, device=device))
+        m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64, device=device))
 
         for p in m.parameters():
-            m.total_params += torch.DoubleTensor([p.numel()])
+            m.total_params += torch.DoubleTensor([p.numel()]).to(device)
 
         m_type = type(m)
 
         fn = None
         if m_type in custom_ops:  # if defined both op maps, use custom_ops to overwrite.
-            fn = custom_ops[m_type]
+            fn = custom_ops[m_type](device)
             if m_type not in types_collection and verbose:
                 print("[INFO] Customize rule %s() %s." % (fn.__qualname__, m_type))
         elif m_type in register_hooks:
-            fn = register_hooks[m_type]
+            fn = register_hooks[m_type](device)
             if m_type not in types_collection and verbose:
                 print("[INFO] Register %s() for %s." % (fn.__qualname__, m_type))
         else:

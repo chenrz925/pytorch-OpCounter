@@ -8,88 +8,112 @@ from torch.nn.modules.conv import _ConvNd
 multiply_adds = 1
 
 
-def zero_ops(m, x, y):
-    m.total_ops += torch.DoubleTensor([int(0)])
+def zero_ops(device):
+    def wrapper(m, x, y):
+        m.total_ops += torch.DoubleTensor([int(0)]).to(device)
+
+    return wrapper
 
 
-def count_convNd(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
-    x = x[0]
+def count_convNd(device):
+    def wrapper(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
+        x = x[0]
 
-    kernel_ops = torch.zeros(m.weight.size()[2:]).numel()  # Kw x Kh
-    bias_ops = 1 if m.bias is not None else 0
+        kernel_ops = torch.zeros(m.weight.size()[2:], device=device).numel()  # Kw x Kh
+        bias_ops = 1 if m.bias is not None else 0
 
-    # N x Cout x H x W x  (Cin x Kw x Kh + bias)
-    total_ops = y.nelement() * (m.in_channels // m.groups * kernel_ops + bias_ops)
+        # N x Cout x H x W x  (Cin x Kw x Kh + bias)
+        total_ops = y.nelement() * (m.in_channels // m.groups * kernel_ops + bias_ops)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+        m.total_ops += torch.DoubleTensor([int(total_ops)]).to(device)
 
-
-def count_convNd_ver2(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
-    x = x[0]
-
-    # N x H x W (exclude Cout)
-    output_size = torch.zeros((y.size()[:1] + y.size()[2:])).numel()
-    # Cout x Cin x Kw x Kh
-    kernel_ops = m.weight.nelement()
-    if m.bias is not None:
-        # Cout x 1
-        kernel_ops += + m.bias.nelement()
-    # x N x H x W x Cout x (Cin x Kw x Kh + bias)
-    m.total_ops += torch.DoubleTensor([int(output_size * kernel_ops)])
+    return wrapper
 
 
-def count_bn(m, x, y):
-    x = x[0]
+def count_convNd_ver2(device):
+    def wrapper(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
+        x = x[0]
 
-    nelements = x.numel()
-    if not m.training:
-        # subtract, divide, gamma, beta
-        total_ops = 2 * nelements
+        # N x H x W (exclude Cout)
+        output_size = torch.zeros((y.size()[:1] + y.size()[2:]), device=device).numel()
+        # Cout x Cin x Kw x Kh
+        kernel_ops = m.weight.nelement()
+        if m.bias is not None:
+            # Cout x 1
+            kernel_ops += + m.bias.nelement()
+        # x N x H x W x Cout x (Cin x Kw x Kh + bias)
+        m.total_ops += torch.DoubleTensor([int(output_size * kernel_ops)]).to(device)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
-
-
-def count_relu(m, x, y):
-    x = x[0]
-
-    nelements = x.numel()
-
-    m.total_ops += torch.DoubleTensor([int(nelements)])
+    return wrapper
 
 
-def count_softmax(m, x, y):
-    x = x[0]
+def count_bn(device):
+    def wrapper(m, x, y):
+        x = x[0]
 
-    batch_size, nfeatures = x.size()
+        nelements = x.numel()
+        if not m.training:
+            # subtract, divide, gamma, beta
+            total_ops = 2 * nelements
 
-    total_exp = nfeatures
-    total_add = nfeatures - 1
-    total_div = nfeatures
-    total_ops = batch_size * (total_exp + total_add + total_div)
+        m.total_ops += torch.DoubleTensor([int(total_ops)]).to(device)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
-
-
-def count_avgpool(m, x, y):
-    # total_add = torch.prod(torch.Tensor([m.kernel_size]))
-    # total_div = 1
-    # kernel_ops = total_add + total_div
-    kernel_ops = 1
-    num_elements = y.numel()
-    total_ops = kernel_ops * num_elements
-
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    return wrapper
 
 
-def count_adap_avgpool(m, x, y):
-    kernel = torch.DoubleTensor([*(x[0].shape[2:])]) // torch.DoubleTensor(list((m.output_size,))).squeeze()
-    total_add = torch.prod(kernel)
-    total_div = 1
-    kernel_ops = total_add + total_div
-    num_elements = y.numel()
-    total_ops = kernel_ops * num_elements
+def count_relu(device):
+    def wrapper(m, x, y):
+        x = x[0]
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+        nelements = x.numel()
+
+        m.total_ops += torch.DoubleTensor([int(nelements)]).to(device)
+
+    return wrapper
+
+
+def count_softmax(device):
+    def wrapper(m, x, y):
+        x = x[0]
+
+        batch_size, nfeatures = x.size()
+
+        total_exp = nfeatures
+        total_add = nfeatures - 1
+        total_div = nfeatures
+        total_ops = batch_size * (total_exp + total_add + total_div)
+
+        m.total_ops += torch.DoubleTensor([int(total_ops)]).to(device)
+
+    return wrapper
+
+
+def count_avgpool(device):
+    def wrapper(m, x, y):
+        # total_add = torch.prod(torch.Tensor([m.kernel_size]))
+        # total_div = 1
+        # kernel_ops = total_add + total_div
+        kernel_ops = 1
+        num_elements = y.numel()
+        total_ops = kernel_ops * num_elements
+
+        m.total_ops += torch.DoubleTensor([int(total_ops)]).to(device)
+
+    return wrapper
+
+
+def count_adap_avgpool(device):
+    def wrapper(m, x, y):
+        kernel = torch.DoubleTensor([*(x[0].shape[2:])]).to(device) // torch.DoubleTensor(list((m.output_size,))).to(device).squeeze()
+        total_add = torch.prod(kernel)
+        total_div = 1
+        kernel_ops = total_add + total_div
+        num_elements = y.numel()
+        total_ops = kernel_ops * num_elements
+
+        m.total_ops += torch.DoubleTensor([int(total_ops)]).to(device)
+
+    return wrapper
 
 
 # TODO: verify the accuracy
@@ -120,13 +144,17 @@ def count_upsample(m, x, y):
 
     m.total_ops += torch.DoubleTensor([int(total_ops)])
 
-# nn.Linear
-def count_linear(m, x, y):
-    # per output element
-    total_mul = m.in_features
-    # total_add = m.in_features - 1
-    # total_add += 1 if m.bias is not None else 0
-    num_elements = y.numel()
-    total_ops = total_mul * num_elements
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+# nn.Linear
+def count_linear(device):
+    def wrapper(m, x, y):
+        # per output element
+        total_mul = m.in_features
+        # total_add = m.in_features - 1
+        # total_add += 1 if m.bias is not None else 0
+        num_elements = y.numel()
+        total_ops = total_mul * num_elements
+
+        m.total_ops += torch.DoubleTensor([int(total_ops)]).to(device)
+
+    return wrapper
