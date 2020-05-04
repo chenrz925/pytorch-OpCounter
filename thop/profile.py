@@ -1,12 +1,19 @@
 from distutils.version import LooseVersion
+from sys import stderr
 
 from thop.vision.basic_hooks import *
 
+
 # logger = logging.getLogger(__name__)
 # logger.setLevel(logging.INFO)
-def prRed(skk): print("\033[91m{}\033[00m" .format(skk))
-def prGreen(skk): print("\033[92m{}\033[00m" .format(skk))
-def prYellow(skk): print("\033[93m{}\033[00m" .format(skk))
+def prRed(skk): print("\033[91m{}\033[00m".format(skk), file=stderr)
+
+
+def prGreen(skk): print("\033[92m{}\033[00m".format(skk), file=stderr)
+
+
+def prYellow(skk): print("\033[93m{}\033[00m".format(skk), file=stderr)
+
 
 if LooseVersion(torch.__version__) < LooseVersion("1.0.0"):
     logging.warning(
@@ -155,11 +162,11 @@ def profile(model: nn.Module, inputs, custom_ops=None, verbose=True, device=torc
         if m_type in custom_ops:  # if defined both op maps, use custom_ops to overwrite.
             fn = custom_ops[m_type](device)
             if m_type not in types_collection and verbose:
-                print("[INFO] Customize rule %s() %s." % (fn.__qualname__, m_type))
+                print("[INFO] Customize rule %s() %s." % (fn.__qualname__, m_type), file=stderr)
         elif m_type in register_hooks:
             fn = register_hooks[m_type](device)
             if m_type not in types_collection and verbose:
-                print("[INFO] Register %s() for %s." % (fn.__qualname__, m_type))
+                print("[INFO] Register %s() for %s." % (fn.__qualname__, m_type), file=stderr)
         else:
             if m_type not in types_collection and verbose:
                 prRed("[WARN] Cannot find rule for %s. Treat it as zero Macs and zero Params." % m_type)
